@@ -3,11 +3,16 @@
 #include "Logger.h"
 #include "utils.h"
 #include <boost/algorithm/string.hpp> 
+#include "loggerUtils.h"
+#include "lemonConventions.h"
 
 namespace lemon {
 
-	Shader::Shader() {
+	int Shader::UBOBindingCounter = 0;
+	std::map<std::string, GLint> Shader::DeclaredUBOs = std::map<std::string, GLint>();
 
+	Shader::Shader() {
+		sourcePath = conventions::UNSPECIFIED_SHADER_NAME;
 	}
 
 	void Shader::init() {
@@ -39,6 +44,7 @@ namespace lemon {
 			std::cout << "Shader type: " << shaderEnumToString(type) << " aready exists in shader program" << sourcePath << " \n";
 		}
 
+		this->sourcePath = sourcePath;
 		std::string source = readSource(sourcePath);
 		const char* code = source.c_str();
 
@@ -53,6 +59,8 @@ namespace lemon {
 
 	// taken from https://www.khronos.org/opengl/wiki/Example/GLSL_Shader_Compile_Error_Testing
 	void Shader::checkCompilation(const ShaderInfo shaderID, const std::string& source) {
+		Logger& logger = Logger::getInstance();
+
 		GLint isCompiled = 0;
 		glGetShaderiv(shaderID, GL_COMPILE_STATUS, &isCompiled);
 		if (isCompiled == GL_FALSE)
@@ -64,19 +72,14 @@ namespace lemon {
 			std::vector<GLchar> errorLog(maxLength);
 			glGetShaderInfoLog(shaderID, maxLength, &maxLength, &errorLog[0]);
 
-		#ifdef DEBUG
-			std::cout << "[DEBUG] Shader Compilation unsuccessful for " + source << std::endl;
-		#endif
-
+			logger.FATAL("Shader <" + sourcePath + "> failed to compile, error message: " + std::string(errorLog.begin(), errorLog.end()));
+		
 			// Provide the infolog in whatever manor you deem best.
 			// Exit with failure.
 			glDeleteShader(shaderID); // Don't leak the shader.
 			exit(EXIT_FAILURE);
 		}
 
-		#ifdef DEBUG
-			std::cout << "[DEBUG] Shader Compilation successful for " + source << std::endl;
-		#endif
 	}
 
 	// TODO parse uniforms for shaders that dont come from files
@@ -128,10 +131,20 @@ namespace lemon {
 						// Remove trailing semicolon, if any
 						uniformName.erase(std::remove(uniformName.begin(), uniformName.end(), ';'), uniformName.end());
 
-						if (iterateAmmount < 2)
-							UBOs[uniformName] = { 0, -1 };
-						else
+						if (iterateAmmount == 1) {
+							if (DeclaredUBOs.find(uniformName) == DeclaredUBOs.end()) {
+								DeclaredUBOs.emplace(uniformName, UBOBindingCounter++);
+							}
+
+							UBOs[uniformName] = { 0, DeclaredUBOs[uniformName] };
+						}
+						else if (iterateAmmount == 2) {
 							uniforms[uniformName] = { -1 };
+						}
+						else {
+							logger.WARN("Uniform declaration not recognized: " + line);
+							continue;
+						}
 
 						std::string utype = iterateAmmount < 2 ? "UBO        " : "Uniform    ";
 						logger.INFO("\t" + utype + ": " + uniformName);
@@ -185,9 +198,11 @@ namespace lemon {
 		for (auto& [uniformName, id] : uniforms) {
 			uniforms[uniformName] = glGetUniformLocation(programID, uniformName.c_str());
 
+
 			if (uniforms[uniformName] < 0) {
 				logger.WARN("Uniform \"" + uniformName + "\" not found!");
 			}
+			logger.TRACE("Uniform: " + uniformName + " location: " + std::to_string(uniforms[uniformName]));
 
 		}
 
@@ -198,6 +213,9 @@ namespace lemon {
 				logger.WARN("UBO \"" + UBOName + "\" not found!");
 			}
 			glUniformBlockBinding(programID, UBOs[UBOName].index, UBOs[UBOName].bindingPoint);
+
+			std::string formattedInfo = formatUBOInfo(UBOName, UBOs[UBOName]);
+			logger.TRACE("Declared UBO: " + formattedInfo);
 		}
 
 		for (auto& [type, shaderID] : shaders) {

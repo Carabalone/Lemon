@@ -3,6 +3,8 @@ out vec4 FragColor;
 
 uniform vec4 color;
 
+uniform vec2 resolution;
+
 // comment
 uniform CameraUBO
 {
@@ -12,6 +14,7 @@ uniform CameraUBO
 	vec3 cameraPosition;
 	float padding;
 };
+
 
 void main()
 {

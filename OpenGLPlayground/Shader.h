@@ -11,6 +11,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <set>
 
 namespace lemon {
 
@@ -37,7 +38,10 @@ namespace lemon {
 		std::map<GLenum, ShaderInfo> shaders;
 		std::map<std::string, UniformInfo> uniforms;
 		std::map<std::string, UBOInfo> UBOs;
+		static std::map<std::string, GLint> DeclaredUBOs;
+		static int UBOBindingCounter;
 		GLuint programID;
+		std::string sourcePath;
 
 		std::string readSource(const std::string& source);
 		void checkCompilation(const ShaderInfo shaderID, const std::string& source);
